@@ -42,11 +42,7 @@ Resources:
           ToPort: 65535
           CidrIp: !Ref VpcCIDR
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 0
-          ToPort: 65535
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: udp
+        - IpProtocol: -1
           FromPort: 0
           ToPort: 65535
           CidrIp: 0.0.0.0/0
