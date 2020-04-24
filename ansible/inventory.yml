@@ -3,13 +3,13 @@ all:
     masters:
       hosts:
         master1: 
-          ansible_host: 34.220.197.170
+          ansible_host: 10.0.3.117
     workers:
       hosts:
         worker1:
-          ansible_host: 18.236.105.146
+          ansible_host: 10.0.3.232
         worker2:
-          ansible_host: 18.236.163.252
+          ansible_host: 10.0.4.212
   vars:
     ansible_connection: ssh 
     ansible_user: ubuntu
