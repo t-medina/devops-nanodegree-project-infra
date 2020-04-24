@@ -65,6 +65,8 @@ Resources:
       Tags: 
         - Key: Name 
           Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+        - Key: kubernetes.io/cluster/cluster
+          Value: owned
 
   PublicSubnet2: 
     Type: AWS::EC2::Subnet
@@ -76,6 +78,8 @@ Resources:
       Tags: 
         - Key: Name 
           Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+        - Key: kubernetes.io/cluster/cluster
+          Value: owned
 
   PrivateSubnet1: 
     Type: AWS::EC2::Subnet
