@@ -111,7 +111,7 @@
     - name: Copy the Kubernetes admin.conf to local
       fetch:
         src: /etc/kubernetes/admin.conf
-        dest: ./admin.conf
+        dest: ./outputs/admin.conf
 
     - name: Install calico pod network
       become: false
@@ -134,7 +134,7 @@
   tasks:
     - name: Copy the join command to server location
       copy: 
-        src: ./join-command
+        src: ./outputs/join-command
         dest: /tmp/join-command.sh 
         mode: 0777
 
