@@ -1,0 +1,63 @@
+Description: >
+  DevopsNanodegree Bastion Host Stack - 
+  Tania Medina 
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  KeyPairName:
+    Description: Name of the key pair that will be used to access the bastion host
+    Type: String
+
+  AllowedCIDR:
+    Description: CIDR address that will be have access to the bastion host
+    Type: String
+
+  Subnet:
+    Description: Subnet where the bastion host will be deployed
+    Type: String
+
+Resources:
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH to bastion host from local IP only
+      GroupName: !Sub ${EnvironmentName}-BastionSegurityGroup
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCIDR
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-0d1cd67c26f5fca19
+      InstanceType: t2.micro
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds: 
+        - Ref: BastionSecurityGroup
+      SubnetId: 
+        !Ref Subnet
+      Tags: 
+        - Key: "Name"
+          Value: !Sub ${EnvironmentName} Bastion
+        - Key: "Environment"
+          Value: !Ref EnvironmentName
+
+Outputs: 
+  Bastion: 
+    Description: IP of the Bastion Instance
+    Value: !GetAtt BastionInstance.PublicIp
+    Export:
+      Name: !Sub ${EnvironmentName}-BastionIp

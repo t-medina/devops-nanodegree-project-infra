@@ -1,0 +1,121 @@
+Description: >
+  DevopsNanodegree Cluster Stack - 
+  Tania Medina 
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  KeyPairName:
+    Description: Name of the key pair that will be used to access the EC2 instances
+    Type: String
+
+  VpcCIDR:
+    Description: Vpc CIDR
+    Type: String
+
+  Subnet1:
+    Description: Subnet 1 where the instances will be deployed
+    Type: String
+
+  Subnet2:
+    Description: Subnet 2 where the instances will be deployed
+    Type: String
+
+Resources:
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow all traffic from the vpc
+      GroupName: !Sub ${EnvironmentName}-ClusterSegurityGroup
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: !Ref VpcCIDR
+        - IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: !Ref VpcCIDR
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+
+  MasterInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Roles: 
+        - k8s-master-role
+
+  WorkerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Roles: 
+        - k8s-worker-role
+
+  MasterInstance1:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-003634241a8fcdec0
+      InstanceType: t2.medium
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref MasterInstanceProfile
+      SecurityGroupIds: 
+        - Ref: ClusterSecurityGroup
+      SubnetId: 
+        !Ref Subnet1
+      Tags: 
+        - Key: "Name"
+          Value: !Sub ${EnvironmentName} Master 1
+        - Key: "Environment"
+          Value: !Ref EnvironmentName
+        - Key: "kubernetes.io/cluster/cluster"
+          Value: "owned"
+
+  WorkerInstance1:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-003634241a8fcdec0
+      InstanceType: t2.medium
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref WorkerInstanceProfile
+      SecurityGroupIds: 
+        - Ref: ClusterSecurityGroup
+      SubnetId: 
+        !Ref Subnet1
+      Tags: 
+        - Key: "Name"
+          Value: !Sub ${EnvironmentName} Worker 1
+        - Key: "Environment"
+          Value: !Ref EnvironmentName
+        - Key: "kubernetes.io/cluster/cluster"
+          Value: "owned"
+
+  WorkerInstance2:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: ami-003634241a8fcdec0
+      InstanceType: t2.medium
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref WorkerInstanceProfile
+      SecurityGroupIds: 
+        - Ref: ClusterSecurityGroup
+      SubnetId: 
+        !Ref Subnet2
+      Tags: 
+        - Key: "Name"
+          Value: !Sub ${EnvironmentName} Worker 2
+        - Key: "Environment"
+          Value: !Ref EnvironmentName
+        - Key: "kubernetes.io/cluster/cluster"
+          Value: "owned"

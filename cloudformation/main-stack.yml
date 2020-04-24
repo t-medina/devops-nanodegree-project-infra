@@ -1,0 +1,91 @@
+Description: >
+  DevopsNanodegree Root Stack - 
+  Tania Medina
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  KeyPairName:
+    Description: Name of the key pair that will be used to access the EC2 instances
+    Type: String
+
+  VpcCIDR: 
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.0.0.0/20
+
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.0.1.0/24
+
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.0.2.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.0.3.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.0.4.0/24
+
+  BastionAccessIP: 
+    Description: Please enter the IP from where bastion host will accessedd
+    Type: String
+    Default: 0.0.0.0/32
+
+Resources:
+
+  NetworkStack: 
+    Type: AWS::CloudFormation::Stack
+    Properties: 
+      Parameters: 
+        EnvironmentName: !Ref EnvironmentName
+        VpcCIDR: !Ref VpcCIDR
+        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
+        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${EnvironmentName} Network Stack
+      TemplateURL: https://devops-nanodegree-cfn.s3-us-west-2.amazonaws.com/network.yml
+
+  Clusterk8sStack: 
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties: 
+      Parameters: 
+        EnvironmentName: !Ref EnvironmentName
+        KeyPairName: !Ref KeyPairName
+        VpcCIDR: !Ref VpcCIDR
+        Subnet1: 
+          Fn::GetAtt: [NetworkStack, Outputs.PrivateSubnet1]
+        Subnet2: 
+          Fn::GetAtt: [NetworkStack, Outputs.PrivateSubnet2]
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${EnvironmentName} Cluster Stack
+      TemplateURL: https://devops-nanodegree-cfn.s3-us-west-2.amazonaws.com/cluster.yml
+
+  BastionStack: 
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties: 
+      Parameters: 
+        EnvironmentName: !Ref EnvironmentName
+        KeyPairName: !Ref KeyPairName
+        AllowedCIDR: !Ref BastionAccessIP
+        Subnet: 
+          Fn::GetAtt: [NetworkStack, Outputs.PublicSubnet1]
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${EnvironmentName} Bastion Host Stack
+      TemplateURL: https://devops-nanodegree-cfn.s3-us-west-2.amazonaws.com/bastion.yml

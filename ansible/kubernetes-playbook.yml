@@ -1,0 +1,258 @@
+---
+- name: Install Kubernetes (kubeadm, kubectl, kubelet)
+  hosts: all
+  become: true
+  tags:
+    - kubeadm
+
+  tasks:
+    - name: Disable SWAP # kubernetes doesn't work with swap enabled
+      shell: |
+        swapoff -a
+
+    - name: Remove swapfile from /etc/fstab # kubernetes doesn't work with swap enabled, it's disabled on fstab so it stays disabled after reboot
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: Load the br_netfilter module
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Let iptables see bridged traffic
+      shell:
+        cmd: |
+          cat <<EOF > /etc/sysctl.d/k8s.conf
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+          EOF
+   
+    - name: Run apt-get update
+      apt:
+        update_cache: yes
+      
+    - name: Install dependencies (apt-transport-https, curl)
+      apt:
+        pkg:
+          - apt-transport-https
+          - curl
+
+    - name: Add Kubernetes repository signing key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes repository
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+        filename: kubernetes.list
+
+    - name: Install kubelet, kubeadm and kubectl
+      apt:
+        update_cache: yes
+        pkg:
+          - kubelet
+          - kubeadm
+          - kubectl
+
+    - name: Hold kubelet, kubeadm and kubectl from automatic updates
+      shell: apt-mark hold kubelet kubeadm kubectl
+    
+    - name: Use the proper hostname
+      shell: hostnamectl set-hostname $(curl http://169.254.169.254/latest/meta-data/local-hostname)
+
+
+- name: Create Kubernetes cluster
+  hosts: master1
+  become: true
+  tags:
+    - cluster_creation
+
+  tasks:
+    - name: Copy the cluster configuratiom
+      copy: 
+        src: ./k8s-config.yml
+        dest: /tmp/k8s-config.yml
+        mode: 0777
+
+    - name: Initialize the Kubernetes cluster using kubeadm
+      command: kubeadm init --config /tmp/k8s-config.yml
+    
+    - name: Create "kubernetes_admin" group
+      group:
+        name: kubernetes_admin
+        state: present
+
+    - name: Add current user to the "kubernetes_admin" group
+      user:
+        name: "{{ ansible_user }}"
+        group: docker
+
+    - name: Create the kube config directory in the user home
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+      
+    - name: Copy the Kubernetes admin.conf file to the use config folder and give it the proper permissions
+      file:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        owner: "{{ ansible_user }}"
+        group: kubernetes_admin
+        state: hard
+        force: yes
+
+    - name: Copy the Kubernetes admin.conf to local
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: ./admin.conf
+
+    - name: Install calico pod network
+      become: false
+      command: kubectl apply -f https://docs.projectcalico.org/v3.11/manifests/calico.yaml
+    
+    - name: Generate join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Copy join command to local file
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./outputs/join-command"
+
+
+- name: Join the Kubernetes nodes
+  hosts: workers
+  become: true
+  tags:
+    - nodes_join
+
+  tasks:
+    - name: Copy the join command to server location
+      copy: 
+        src: ./join-command
+        dest: /tmp/join-command.sh 
+        mode: 0777
+
+    - name: Join the node to cluster
+      command: sh /tmp/join-command.sh
+
+
+- name: Install Kubernetes Dashboard
+  hosts: master1
+  become: false
+  tags:
+    - dashboard
+
+  tasks:
+    - name: Install Kubernetes Dashboard
+      command: kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.0.0-beta8/aio/deploy/recommended.yaml
+
+    - name: Create Kubernetes Dashboard service account
+      command: kubectl -n kubernetes-dashboard create serviceaccount admin-user
+
+    - name: Create Kubernetes Dashboard service account role binding
+      command: kubectl -n kubernetes-dashboard create clusterrolebinding admin-user --clusterrole=cluster-admin --serviceaccount=kubernetes-dashboard:admin-user
+    
+    - name: Extract Kubernetes Dashboard service account secret id
+      shell: >
+              kubectl -n kubernetes-dashboard get secret | 
+              grep admin-user | 
+              awk '{print $1}'
+      register: secret_id
+
+    - name: Extract Kubernetes Dashboard authentication token
+      shell: >
+              kubectl -n kubernetes-dashboard describe secret "{{ secret_id.stdout_lines[0] }}"  | 
+              awk '/token:/{print $2}'
+      register: dashboard_token
+
+    - name: Copy Kubernetes Dashboard authentication token to local file
+      local_action: copy content="{{ dashboard_token.stdout_lines[0] }}" dest="./outputs/dashboard_token"
+
+
+- name: Install Helm
+  hosts: master1
+  become: true
+  tags:
+    - helm
+
+  tasks:
+    - name: Download install script
+      shell: curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > /tmp/install-helm.sh
+      args:
+        warn: no
+    
+    - name: Change the install script permissions
+      file:
+        path: /tmp/install-helm.sh
+        mode: u+x
+
+    - name: Execute the install script permissions
+      shell: /bin/bash /tmp/install-helm.sh
+
+    - name: Create tiller serviceaccount
+      become: false
+      command: kubectl -n kube-system create serviceaccount tiller
+
+    - name: Create tiller serviceaccount role binding
+      become: false
+      command: kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
+    
+    - name: Execute helm init
+      become: false
+      shell: helm init --upgrade --service-account tiller
+
+
+- name: Install Jenkins
+  hosts: master1
+  become: true
+  tags:
+    - jenkins
+
+  tasks:
+    - name: Copy the jenkins-pv.yaml and to the master node
+      copy: 
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: 0777
+      with_items:
+        - { src: './jenkins/jenkins-pv.yaml', dest: '/tmp/jenkins-pv.yaml' }
+        - { src: './jenkins/jenkins-pvc.yaml', dest: '/tmp/jenkins-pvc.yaml' }
+        - { src: './jenkins/values.yaml', dest: '/tmp/values.yaml' }
+
+    - name: Apply jenkins-pv.yaml
+      become: false
+      command: kubectl apply -f /tmp/jenkins-pv.yaml
+
+    - name: Apply jenkins-pvc.yaml
+      become: false
+      command: kubectl apply -f /tmp/jenkins-pvc.yaml
+
+    - name: Install Jenkins
+      become: false
+      command: helm install --name jenkins -f /tmp/values.yaml stable/jenkins
+
+    - name: Extract Jenkins admin password
+      become: false
+      shell: >
+              printf $(kubectl get secret --namespace default jenkins -o jsonpath="{.data.jenkins-admin-password}" | 
+              base64 --decode);echo
+      register: jenkins_password
+
+    - name: Copy Jenkins admin password to local file
+      local_action: copy content="{{ jenkins_password.stdout_lines[0] }}" dest="./outputs/jenkins_password"
+
+    - name: Extract Jenkins url
+      become: false
+      shell: >
+            export SERVICE_IP=$(kubectl get svc --namespace default jenkins | grep jenkins |  awk '{print $4}'); 
+            echo http://$SERVICE_IP:8080/login
+      register: jenkins_url
+
+    - name: Copy Jenkins url to local file
+      local_action: copy content="{{ jenkins_url.stdout_lines[0] }}" dest="./outputs/jenkins_url"
