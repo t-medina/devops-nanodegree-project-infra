@@ -221,9 +221,9 @@
         dest: "{{ item.dest }}"
         mode: 0777
       with_items:
-        - { src: './jenkins/jenkins-pv.yaml', dest: '/tmp/jenkins-pv.yaml' }
-        - { src: './jenkins/jenkins-pvc.yaml', dest: '/tmp/jenkins-pvc.yaml' }
-        - { src: './jenkins/values.yaml', dest: '/tmp/values.yaml' }
+        - { src: '../jenkins/jenkins-pv.yaml', dest: '/tmp/jenkins-pv.yaml' }
+        - { src: '../jenkins/jenkins-pvc.yaml', dest: '/tmp/jenkins-pvc.yaml' }
+        - { src: '../jenkins/values.yaml', dest: '/tmp/values.yaml' }
 
     - name: Apply jenkins-pv.yaml
       become: false
